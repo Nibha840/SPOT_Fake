@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spot the Fake Photo - Live Camera Demo</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --card-bg: rgba(22, 27, 38, 0.7);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            --primary: #6366f1;
+            --primary-glow: rgba(99, 102, 241, 0.35);
+            --success: #10b981;
+            --success-glow: rgba(16, 185, 129, 0.35);
+            --warning: #f59e0b;
+            --warning-glow: rgba(245, 158, 11, 0.35);
+            --danger: #ef4444;
+            --danger-glow: rgba(239, 68, 68, 0.35);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--bg-color);
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.15) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(16, 185, 129, 0.1) 0px, transparent 50%);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem 1rem;
+            overflow-x: hidden;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 900px;
+            display: grid;
+            grid-template-columns: 1.2fr 0.8fr;
+            gap: 2rem;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        header {
+            grid-column: 1 / -1;
+            text-align: center;
+            margin-bottom: 1rem;
+        }
+
+        header h1 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 2.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #a5b4fc 0%, #6366f1 50%, #10b981 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.5rem;
+            letter-spacing: -0.03em;
+        }
+
+        header p {
+            color: var(--text-muted);
+            font-size: 1.1rem;
+            font-weight: 300;
+        }
+
+        .card {
+            background: var(--card-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--border-color);
+            border-radius: 24px;
+            padding: 1.5rem;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+            gap: 1.2rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .video-container {
+            width: 100%;
+            aspect-ratio: 4/3;
+            border-radius: 16px;
+            overflow: hidden;
+            background-color: #030712;
+            position: relative;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        #video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1); /* mirror effect */
+        }
+
+        .scan-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: linear-gradient(90deg, transparent, var(--primary), transparent);
+            box-shadow: 0 0 12px var(--primary);
+            animation: scan 2.5s linear infinite;
+            display: none;
+        }
+
+        @keyframes scan {
+            0% { top: 0%; }
+            50% { top: 100%; }
+            100% { top: 0%; }
+        }
+
+        .controls {
+            display: flex;
+            gap: 0.8rem;
+        }
+
+        button {
+            flex: 1;
+            padding: 0.85rem 1.5rem;
+            border-radius: 14px;
+            border: none;
+            cursor: pointer;
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 600;
+            font-size: 0.95rem;
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+            box-shadow: 0 4px 12px var(--primary-glow);
+        }
+
+        .btn-primary:hover {
+            background: #4f46e5;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px var(--primary-glow);
+        }
+
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.06);
+            color: var(--text-main);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.12);
+            transform: translateY(-2px);
+        }
+
+        .btn-secondary.active {
+            background: var(--warning-glow);
+            color: var(--warning);
+            border-color: rgba(245, 158, 11, 0.3);
+            box-shadow: 0 0 12px var(--warning-glow);
+        }
+
+        .result-panel {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            height: 100%;
+        }
+
+        .gauge-section {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem 0;
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.03);
+        }
+
+        .circle-gauge {
+            position: relative;
+            width: 160px;
+            height: 160px;
+        }
+
+        .circle-gauge svg {
+            width: 100%;
+            height: 100%;
+            transform: rotate(-90deg);
+        }
+
+        .circle-gauge circle {
+            fill: none;
+            stroke-width: 10;
+        }
+
+        .circle-gauge .bg-circle {
+            stroke: rgba(255, 255, 255, 0.05);
+        }
+
+        .circle-gauge .progress-circle {
+            stroke: var(--primary);
+            stroke-dasharray: 440;
+            stroke-dashoffset: 440;
+            stroke-linecap: round;
+            transition: stroke-dashoffset 0.6s cubic-bezier(0.4, 0, 0.2, 1), stroke 0.6s ease;
+        }
+
+        .gauge-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+        }
+
+        .gauge-score {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 2.2rem;
+            font-weight: 700;
+            line-height: 1;
+            margin-bottom: 0.1rem;
+        }
+
+        .gauge-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+
+        .status-badge {
+            margin-top: 1.2rem;
+            padding: 0.5rem 1.2rem;
+            border-radius: 30px;
+            font-weight: 600;
+            font-size: 1.1rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            transition: all 0.4s ease;
+            text-align: center;
+        }
+
+        .status-real {
+            background-color: var(--success-glow);
+            color: var(--success);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            box-shadow: 0 0 15px rgba(16, 185, 129, 0.2);
+        }
+
+        .status-screen {
+            background-color: var(--danger-glow);
+            color: var(--danger);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            box-shadow: 0 0 15px rgba(239, 68, 68, 0.2);
+        }
+
+        .status-unknown {
+            background-color: rgba(255, 255, 255, 0.05);
+            color: var(--text-muted);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .details-section {
+            margin-top: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.6rem;
+            font-size: 0.9rem;
+        }
+
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.6rem 0.8rem;
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 8px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+        }
+
+        .detail-row span:first-child {
+            color: var(--text-muted);
+        }
+
+        .detail-row span:last-child {
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 600;
+        }
+
+        .info-card {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 0.8rem 1rem;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            line-height: 1.4;
+        }
+
+        .loading-spinner {
+            display: none;
+            width: 18px;
+            height: 18px;
+            border: 2.5px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Spot the Fake Photo</h1>
+        <p>Anti-Recapture / Screen Photo Detector (Demo Server)</p>
+    </header>
+
+    <div class="container">
+        <!-- LEFT PANEL: CAMERA VIEW -->
+        <div class="card">
+            <div class="video-container">
+                <video id="video" autoplay playsinline></video>
+                <div class="scan-overlay" id="scan-overlay"></div>
+            </div>
+            
+            <div class="controls">
+                <button class="btn-primary" id="capture-btn">
+                    <span class="loading-spinner" id="spinner"></span>
+                    <span id="btn-text">Scan Frame</span>
+                </button>
+                <button class="btn-secondary" id="auto-btn">Auto-Scan</button>
+            </div>
+        </div>
+
+        <!-- RIGHT PANEL: DETECTOR RESULTS -->
+        <div class="card result-panel">
+            <h3 style="font-family: 'Space Grotesk', sans-serif; font-size: 1.2rem; border-bottom: 1px solid rgba(255, 255, 255, 0.05); padding-bottom: 0.5rem;">Analysis Result</h3>
+            
+            <div class="gauge-section">
+                <div class="circle-gauge">
+                    <svg viewBox="0 0 160 160">
+                        <circle class="bg-circle" cx="80" cy="80" r="70"></circle>
+                        <circle class="progress-circle" id="progress-circle" cx="80" cy="80" r="70"></circle>
+                    </svg>
+                    <div class="gauge-text">
+                        <div class="gauge-score" id="gauge-score">--</div>
+                        <div class="gauge-label">Score</div>
+                    </div>
+                </div>
+
+                <div class="status-badge status-unknown" id="status-badge">Awaiting Scan</div>
+            </div>
+
+            <div class="details-section">
+                <div class="detail-row">
+                    <span>Result Type</span>
+                    <span id="result-type">--</span>
+                </div>
+                <div class="detail-row">
+                    <span>Latency</span>
+                    <span id="result-latency">--</span>
+                </div>
+                <div class="detail-row">
+                    <span>Target Scale</span>
+                    <span>On-Device ($0)</span>
+                </div>
+            </div>
+
+            <div class="info-card">
+                <strong>Signal Detection details:</strong>
+                Real cameras capturing screens record moiré patterns, cooler/blue light shift, and unnatural sharpness uniformity. This demo scores images 0.0 (genuine) to 1.0 (screen capture).
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden canvas for image capture -->
+    <canvas id="canvas" style="display:none;"></canvas>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const captureBtn = document.getElementById('capture-btn');
+        const autoBtn = document.getElementById('auto-btn');
+        const scanOverlay = document.getElementById('scan-overlay');
+        const spinner = document.getElementById('spinner');
+        const btnText = document.getElementById('btn-text');
+        
+        const progressCircle = document.getElementById('progress-circle');
+        const gaugeScore = document.getElementById('gauge-score');
+        const statusBadge = document.getElementById('status-badge');
+        const resultType = document.getElementById('result-type');
+        const resultLatency = document.getElementById('result-latency');
+
+        let autoScanInterval = null;
+        const radius = 70;
+        const circumference = 2 * Math.PI * radius;
+
+        // Set initial circular progress to 0
+        progressCircle.style.strokeDasharray = circumference;
+        progressCircle.style.strokeDashoffset = circumference;
+
+        // Start user camera
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } } 
+                });
+                video.srcObject = stream;
+            } catch (err) {
+                console.error("Error accessing camera: ", err);
+                statusBadge.textContent = "Camera Error";
+                statusBadge.className = "status-badge status-screen";
+                alert("Please grant camera permissions to test the live demo.");
+            }
+        }
+
+        // Capture frame & predict
+        async function scanFrame() {
+            if (!video.srcObject) return;
+
+            // Show scan animation and loading state
+            scanOverlay.style.display = 'block';
+            if (!autoScanInterval) {
+                spinner.style.display = 'inline-block';
+                btnText.textContent = "Analyzing...";
+                captureBtn.disabled = true;
+            }
+
+            const ctx = canvas.getContext('2d');
+            canvas.width = 640;
+            canvas.height = 480;
+            
+            // Draw currently playing video frame to canvas
+            ctx.translate(canvas.width, 0);
+            ctx.scale(-1, 1); // Flip horizontally to match mirrored feed
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            ctx.setTransform(1, 0, 0, 1, 0, 0); // reset matrix
+
+            // Extract base64 image data
+            const base64Image = canvas.toDataURL('image/jpeg', 0.85);
+
+            const t0 = performance.now();
+            try {
+                const response = await fetch('/predict', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ image: base64Image })
+                });
+                
+                const data = await response.json();
+                const t1 = performance.now();
+                const scanTime = Math.round(t1 - t0);
+
+                if (data.success) {
+                    updateUI(data.score, scanTime);
+                } else {
+                    console.error("Prediction failed:", data.error);
+                }
+            } catch (error) {
+                console.error("Error posting to prediction API:", error);
+            } finally {
+                scanOverlay.style.display = 'none';
+                if (!autoScanInterval) {
+                    spinner.style.display = 'none';
+                    btnText.textContent = "Scan Frame";
+                    captureBtn.disabled = false;
+                }
+            }
+        }
+
+        function updateUI(score, scanTime) {
+            // Update score text
+            gaugeScore.textContent = score.toFixed(2);
+            
+            // Update circular progress circle offset
+            // score ranges from 0 to 1. Offset = circumference * (1 - score)
+            const offset = circumference * (1 - score);
+            progressCircle.style.strokeDashoffset = offset;
+
+            // Set color based on score (0 = green, 1 = red)
+            let color = '';
+            let statusText = '';
+            let statusClass = '';
+            
+            if (score < 0.4) {
+                color = 'var(--success)';
+                statusText = 'Genuine (Real)';
+                statusClass = 'status-badge status-real';
+                resultType.textContent = 'REAL PHOTO';
+                resultType.style.color = 'var(--success)';
+            } else if (score < 0.7) {
+                color = 'var(--warning)';
+                statusText = 'Suspicious';
+                statusClass = 'status-badge';
+                statusBadge.style.backgroundColor = 'var(--warning-glow)';
+                statusBadge.style.color = 'var(--warning)';
+                statusBadge.style.borderColor = 'rgba(245, 158, 11, 0.2)';
+                resultType.textContent = 'SUSPECT';
+                resultType.style.color = 'var(--warning)';
+            } else {
+                color = 'var(--danger)';
+                statusText = 'Fraud (Screen)';
+                statusClass = 'status-badge status-screen';
+                resultType.textContent = 'SCREEN PHOTO';
+                resultType.style.color = 'var(--danger)';
+            }
+
+            progressCircle.style.stroke = color;
+            statusBadge.textContent = statusText;
+            if (score < 0.4 || score >= 0.7) {
+                statusBadge.className = statusClass;
+                statusBadge.style.backgroundColor = '';
+                statusBadge.style.color = '';
+                statusBadge.style.borderColor = '';
+            }
+
+            resultLatency.textContent = `${scanTime} ms`;
+        }
+
+        // Click handlers
+        captureBtn.addEventListener('click', scanFrame);
+
+        autoBtn.addEventListener('click', () => {
+            if (autoScanInterval) {
+                // Turn off auto-scan
+                clearInterval(autoScanInterval);
+                autoScanInterval = null;
+                autoBtn.textContent = "Auto-Scan";
+                autoBtn.classList.remove('active');
+            } else {
+                // Turn on auto-scan
+                autoScanInterval = setInterval(scanFrame, 1200);
+                autoBtn.textContent = "Scanning Live";
+                autoBtn.classList.add('active');
+                scanFrame(); // Trigger first scan immediately
+            }
+        });
+
+        // Initialize camera on page load
+        window.addEventListener('load', startCamera);
+    </script>
+</body>
+</html>
