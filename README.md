@@ -34,6 +34,7 @@ real photo). It saves `model.json`.
 
 ```bash
 python predict.py some_image.jpg
+python predict.py "real\WhatsApp Image 2026-06-29 at 19.27.32 (13).jpeg"
 ```
 
 Prints one number 0–1. (1 = looks like a screen recapture.)
