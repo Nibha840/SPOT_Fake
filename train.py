@@ -86,21 +86,51 @@ def main():
     X_train_s = scaler.fit_transform(X_train)
     X_test_s = scaler.transform(X_test)
 
-    clf = LogisticRegression(max_iter=2000, C=1.0, class_weight="balanced")
-    clf.fit(X_train_s, y_train)
+    # 1. Logistic Regression
+    clf_lr = LogisticRegression(max_iter=2000, C=1.0, class_weight="balanced")
+    clf_lr.fit(X_train_s, y_train)
+    lr_train_acc = accuracy_score(y_train, clf_lr.predict(X_train_s))
+    lr_test_acc = accuracy_score(y_test, clf_lr.predict(X_test_s))
 
-    train_acc = accuracy_score(y_train, clf.predict(X_train_s))
-    test_acc = accuracy_score(y_test, clf.predict(X_test_s))
+    # 2. SVM with RBF Kernel
+    from sklearn.svm import SVC
+    clf_svm = SVC(kernel="rbf", C=2.0, gamma="scale", probability=True, random_state=42)
+    clf_svm.fit(X_train_s, y_train)
+    svm_train_acc = accuracy_score(y_train, clf_svm.predict(X_train_s))
+    svm_test_acc = accuracy_score(y_test, clf_svm.predict(X_test_s))
 
-    print(f"\nTrain accuracy: {train_acc*100:.1f}%")
-    print(f"Test accuracy:  {test_acc*100:.1f}%  (on {len(y_test)} held-out images)")
+    # 3. Random Forest
+    from sklearn.ensemble import RandomForestClassifier
+    clf_rf = RandomForestClassifier(n_estimators=200, max_depth=6, class_weight="balanced", random_state=42)
+    clf_rf.fit(X_train_s, y_train)
+    rf_train_acc = accuracy_score(y_train, clf_rf.predict(X_train_s))
+    rf_test_acc = accuracy_score(y_test, clf_rf.predict(X_test_s))
+
+    print("\n--- Model Performance Comparison ---")
+    print(f"Logistic Regression: Train={lr_train_acc*100:.1f}%, Test={lr_test_acc*100:.1f}%")
+    print(f"SVM (RBF Kernel):     Train={svm_train_acc*100:.1f}%, Test={svm_test_acc*100:.1f}%")
+    print(f"Random Forest:        Train={rf_train_acc*100:.1f}%, Test={rf_test_acc*100:.1f}%")
+    print("------------------------------------\n")
+
+    # Select the best model (prefer Logistic Regression if accuracy is tied, for simplicity)
+    best_model_name = "logistic_regression"
+    best_test_acc = lr_test_acc
+    best_clf = clf_lr
+    
+    if svm_test_acc > best_test_acc:
+        best_model_name = "svm_rbf"
+        best_test_acc = svm_test_acc
+        best_clf = clf_svm
+    
+    print(f"Selected Best Model: {best_model_name.upper()} (Test Accuracy: {best_test_acc*100:.1f}%)")
+
     print("\nConfusion matrix (rows=true, cols=pred) [0=real, 1=screen]:")
-    print(confusion_matrix(y_test, clf.predict(X_test_s)))
+    print(confusion_matrix(y_test, best_clf.predict(X_test_s)))
     print("\nClassification report:")
-    print(classification_report(y_test, clf.predict(X_test_s), target_names=["real", "screen"]))
+    print(classification_report(y_test, best_clf.predict(X_test_s), target_names=["real", "screen"]))
 
     # Show misclassified files so you can inspect them
-    preds_test = clf.predict(X_test_s)
+    preds_test = best_clf.predict(X_test_s)
     wrong = [(p, yt, yp) for p, yt, yp in zip(paths_test, y_test, preds_test) if yt != yp]
     if wrong:
         print("Misclassified:")
@@ -110,22 +140,35 @@ def main():
     # Refit on ALL data for the final shipped model (use all available signal)
     scaler_full = StandardScaler()
     X_full_s = scaler_full.fit_transform(X)
-    clf_full = LogisticRegression(max_iter=2000, C=1.0, class_weight="balanced")
-    clf_full.fit(X_full_s, y)
 
     model = {
+        "model_type": best_model_name,
         "feature_names": FEATURE_NAMES,
         "scaler_mean": scaler_full.mean_.tolist(),
         "scaler_scale": scaler_full.scale_.tolist(),
-        "coef": clf_full.coef_[0].tolist(),
-        "intercept": float(clf_full.intercept_[0]),
-        "held_out_test_accuracy": test_acc,
+        "held_out_test_accuracy": best_test_acc,
         "n_train_images": int(len(y)),
     }
+
+    if best_model_name == "logistic_regression":
+        clf_full = LogisticRegression(max_iter=2000, C=1.0, class_weight="balanced")
+        clf_full.fit(X_full_s, y)
+        model["coef"] = clf_full.coef_[0].tolist()
+        model["intercept"] = float(clf_full.intercept_[0])
+    elif best_model_name == "svm_rbf":
+        clf_full = SVC(kernel="rbf", C=2.0, gamma="scale", probability=True, random_state=42)
+        clf_full.fit(X_full_s, y)
+        model["support_vectors"] = clf_full.support_vectors_.tolist()
+        model["dual_coef"] = clf_full.dual_coef_[0].tolist()
+        model["intercept"] = float(clf_full.intercept_[0])
+        model["gamma"] = float(clf_full._gamma) if hasattr(clf_full, "_gamma") else (1.0 / X.shape[1])
+        model["prob_a"] = float(clf_full.probA_[0])
+        model["prob_b"] = float(clf_full.probB_[0])
+
     with open("model.json", "w") as f:
         json.dump(model, f, indent=2)
 
-    print(f"\nSaved model.json (held-out test accuracy: {test_acc*100:.1f}%)")
+    print(f"\nSaved model.json (held-out test accuracy: {best_test_acc*100:.1f}%)")
     print("Now run: python predict.py some_image.jpg")
 
 

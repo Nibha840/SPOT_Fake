@@ -25,6 +25,7 @@ arithmetic).
 import json
 import os
 import sys
+import numpy as np
 
 from features import extract_features
 
@@ -46,21 +47,42 @@ def _load_model():
         return json.load(f)
 
 
-def predict(image_path: str) -> float:
+def predict(image_path_or_img) -> float:
     model = _load_model()
-    vec, _ = extract_features(image_path)
+    vec, _ = extract_features(image_path_or_img)
 
-    mean = model["scaler_mean"]
-    scale = model["scaler_scale"]
-    coef = model["coef"]
-    intercept = model["intercept"]
+    mean = np.array(model["scaler_mean"])
+    scale = np.array(model["scaler_scale"])
+    x_scaled = (vec - mean) / np.where(scale != 0, scale, 1.0)
 
-    z = intercept
-    for x, m, s, w in zip(vec, mean, scale, coef):
-        x_scaled = (x - m) / (s if s != 0 else 1.0)
-        z += x_scaled * w
+    model_type = model.get("model_type", "logistic_regression")
 
-    score = _sigmoid(z)
+    if model_type == "logistic_regression":
+        coef = np.array(model["coef"])
+        intercept = model["intercept"]
+        z = np.dot(x_scaled, coef) + intercept
+        score = _sigmoid(z)
+    elif model_type == "svm_rbf":
+        support_vectors = np.array(model["support_vectors"])
+        dual_coef = np.array(model["dual_coef"])
+        intercept = model["intercept"]
+        gamma = model["gamma"]
+        prob_a = model["prob_a"]
+        prob_b = model["prob_b"]
+
+        # RBF Kernel distance: K(x, xi) = exp(-gamma * ||x - xi||^2)
+        diff = support_vectors - x_scaled
+        sq_dist = np.sum(diff ** 2, axis=1)
+        k = np.exp(-gamma * sq_dist)
+        
+        # Decision function value
+        df = np.dot(dual_coef, k) + intercept
+        
+        # Platt scaling probability estimation
+        score = 1.0 / (1.0 + np.exp(prob_a * df + prob_b))
+    else:
+        raise ValueError(f"Unknown model type: {model_type}")
+
     return float(score)
 
 

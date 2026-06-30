@@ -53,14 +53,41 @@ from scipy import ndimage
 WORK_SIZE = 512
 
 
-def _load_rgb(image_path_or_img):
+def _crop_center_square(img):
+    w, h = img.size
+    min_dim = min(w, h)
+    left = (w - min_dim) // 2
+    top = (h - min_dim) // 2
+    right = left + min_dim
+    bottom = top + min_dim
+    return img.crop((left, top, right, bottom))
+
+
+def _load_rgb_and_patch(image_path_or_img):
     if isinstance(image_path_or_img, Image.Image):
         img = image_path_or_img.convert("RGB")
     else:
         img = Image.open(image_path_or_img).convert("RGB")
-    # Resize (don't crop) so every image is comparable & fast to process.
-    img = img.resize((WORK_SIZE, WORK_SIZE), Image.BILINEAR)
-    return np.asarray(img).astype(np.float32)  # H x W x 3, 0-255
+    
+    # Crop to square first to avoid warping aspect ratio
+    square_img = _crop_center_square(img)
+    
+    # 1. Global image for color, sharpness tiling, glare, and borders
+    global_img = square_img.resize((WORK_SIZE, WORK_SIZE), Image.BILINEAR)
+    global_rgb = np.asarray(global_img).astype(np.float32)
+    
+    # 2. Original-resolution patch for frequency domain moire patterns
+    orig_w, orig_h = square_img.size
+    if orig_w > WORK_SIZE:
+        left = (orig_w - WORK_SIZE) // 2
+        top = (orig_h - WORK_SIZE) // 2
+        patch_img = square_img.crop((left, top, left + WORK_SIZE, top + WORK_SIZE))
+    else:
+        patch_img = global_img
+        
+    patch_rgb = np.asarray(patch_img).astype(np.float32)
+    
+    return global_rgb, patch_rgb
 
 
 def _to_gray(rgb):
@@ -180,6 +207,30 @@ def _border_edge_features(gray):
     }
 
 
+def _lbp_features(gray, bins=16):
+    """Computes a histogram of Local Binary Patterns (LBP) for texture representation."""
+    h, w = gray.shape
+    lbp = np.zeros((h - 2, w - 2), dtype=np.uint8)
+    
+    # 8-neighborhood offsets (clockwise)
+    offsets = [
+        (-1, -1), (-1, 0), (-1, 1),
+        (0, 1), (1, 1), (1, 0),
+        (1, -1), (0, -1)
+    ]
+    
+    center = gray[1:-1, 1:-1]
+    
+    for i, (dy, dx) in enumerate(offsets):
+        neighbor = gray[1+dy : h-1+dy, 1+dx : w-1+dx]
+        mask = neighbor >= center
+        lbp += (mask.astype(np.uint8) << i)
+        
+    hist, _ = np.histogram(lbp, bins=bins, range=(0, 256), density=True)
+    return {f"lbp_bin_{i}": float(val) for i, val in enumerate(hist)}
+
+
+LBP_BINS = 16
 FEATURE_NAMES = [
     "fft_low_e", "fft_mid_e", "fft_high_e", "fft_mid_peakiness",
     "sat_mean", "sat_std", "val_mean", "blue_red_balance",
@@ -187,20 +238,22 @@ FEATURE_NAMES = [
     "sharp_tile_mean", "sharp_tile_std", "sharp_tile_cv",
     "glare_frac",
     "border_edge_ratio",
-]
+] + [f"lbp_bin_{i}" for i in range(LBP_BINS)]
 
 
 def extract_features(image_path_or_img):
     """Main entry point: image -> fixed-length numpy feature vector."""
-    rgb = _load_rgb(image_path_or_img)
-    gray = _to_gray(rgb)
+    global_rgb, patch_rgb = _load_rgb_and_patch(image_path_or_img)
+    global_gray = _to_gray(global_rgb)
+    patch_gray = _to_gray(patch_rgb)
 
     feats = {}
-    feats.update(_fft_features(gray))
-    feats.update(_color_features(rgb))
-    feats.update(_sharpness_tiles(gray))
-    feats.update(_glare_features(rgb))
-    feats.update(_border_edge_features(gray))
+    feats.update(_fft_features(patch_gray))     # Run FFT on high-res patch to preserve moire
+    feats.update(_color_features(global_rgb))
+    feats.update(_sharpness_tiles(global_gray))
+    feats.update(_glare_features(global_rgb))
+    feats.update(_border_edge_features(global_gray))
+    feats.update(_lbp_features(patch_gray, bins=LBP_BINS)) # Run LBP on high-res patch for texture
 
     vec = np.array([feats[name] for name in FEATURE_NAMES], dtype=np.float32)
     vec = np.nan_to_num(vec, nan=0.0, posinf=0.0, neginf=0.0)
